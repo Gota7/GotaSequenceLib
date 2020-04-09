@@ -994,7 +994,7 @@ namespace GotaSequenceLib.Playback {
                 case SequenceCommands.NotVar:
                     if (track.DoCommandWork) {
                         Vars[args[0]] = (short)((~(Vars[args[0]] & args[1])) | (Vars[args[0]] & (~args[0])));
-                        SetVar(args[0], trackIndex, (short)((~(GetVar(args[0], trackIndex) & args[1])) | (GetVar(args[0], trackIndex) & (~args[0])));
+                        SetVar(args[0], trackIndex, (short)((~(GetVar(args[0], trackIndex) & args[1])) | (GetVar(args[0], trackIndex) & (~args[0]))));
                     }
                     break;
 
