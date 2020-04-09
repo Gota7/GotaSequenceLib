@@ -443,7 +443,7 @@ namespace GotaSequenceLib {
             List<string> t = text.ToList();
             int comNum = 0;
             for (int i = t.Count - 1; i >= 0; i--) {
-                t[i] = t[i].Replace("\t", "").Replace("\r", "");
+                t[i] = t[i].Replace("\t", " ").Replace("\r", "");
                 try { t[i] = t[i].Split(';')[0]; } catch { }
                 if (t[i].Replace(" ", "").Length == 0) { t.RemoveAt(i); continue; }
                 for (int j = 0; j < t[i].Length; j++) {
