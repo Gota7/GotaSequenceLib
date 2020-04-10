@@ -412,18 +412,31 @@ namespace GotaSequenceLib {
         /// Convert an MIDI to sequence commands.
         /// </summary>
         /// <param name="s">Sequence.</param>
+        /// <param name="labels">Labels.</param>
+        /// <param name="privateLabels">Private labels.</param>
+        /// <param name="sequenceName">Sequence name.</param>
         /// <param name="timeBase">Time base.</param>
+        /// <param name="privateLabelsForCalls">If the use private labels for calls.</param>
         /// <returns>The sequence commands.</returns>
-        public static List<SequenceCommand> ToSequenceCommands(Sequence s, int timeBase = 48) {
+        public static List<SequenceCommand> ToSequenceCommands(Sequence s, out Dictionary<string, int> labels, out List<int> privateLabels, string sequenceName, int timeBase = 48, bool privateLabelsForCalls = false) {
 
             //Commands.
             List<SequenceCommand> commands = new List<SequenceCommand>();
 
+            //Labels.
+            labels = new Dictionary<string, int>();
+            privateLabels = new List<int>();
+            labels.Add("SMF_" + sequenceName + "_Begin", 0);
+
             //Allocate tracks.
+            List<int> allocs = new List<int>();
             if (s.Count > 1) {
                 ushort alloc = 0;
                 for (int i = 0; i < s.Count; i++) {
-                    alloc |= (ushort)(0b1 << i);
+                    //if (s[i].Count > 0x32) {
+                        alloc |= (ushort)(0b1 << i);
+                        allocs.Add(i);
+                    //}
                 }
                 commands.Add(new SequenceCommand() { CommandType = SequenceCommands.AllocateTrack, Parameter = alloc });
             }
@@ -434,15 +447,26 @@ namespace GotaSequenceLib {
                 commands.Add(new SequenceCommand() { CommandType = SequenceCommands.OpenTrack, Parameter = new OpenTrackParameter() { TrackNumber = (byte)i } });
             }
 
+            //Other helpers.
+            Dictionary<string, int> otherLabelTicks = new Dictionary<string, int>();
+            int loopStartTicks = -1;
+            int loopEndTicks = -1;
+
             //Read tracks.
-            Dictionary<string, int> loopStartLabels = new Dictionary<string, int>();
-            Dictionary<string, int> loopEndLabels = new Dictionary<string, int>();
-            for (int i = 0; i < s.Count; i++) {
-                ReadTrack(commands, s, i, openTrackOff, loopStartLabels, loopEndLabels, timeBase);
+            labels.Add("SMF_" + sequenceName + "_Start", 1);
+            for (int i = 0; i < allocs.Count; i++) {
+                labels.Add("SMF_" + sequenceName + "_Track_" + allocs[i], commands.Count);
+                if (i != 0) { (commands[1 + i - 1].Parameter as OpenTrackParameter).m_Index = commands.Count; }
+                ReadTrack(commands, s, allocs[i], openTrackOff, labels, timeBase, sequenceName, otherLabelTicks, ref loopStartTicks, ref loopEndTicks);
             }
 
             //Terminating fin.
+            labels.Add("SMF_" + sequenceName + "_End", commands.Count);
             commands.Add(new SequenceCommand() { CommandType = SequenceCommands.Fin });
+
+            //Convert all indices to references.
+
+            //Optimize the sequence.
 
             //Return commands.
             return commands;
@@ -456,10 +480,10 @@ namespace GotaSequenceLib {
         /// <param name="s">Sequence.</param>
         /// <param name="trackNum">Track number.</param>
         /// <param name="openTrackOffset">Open track offset.</param>
-        /// <param name="loopStartLabels">Loop start labels.</param>
-        /// <param name="loopEndLabels">Loop end labels.</param>
+        /// <param name="labels">Labels.</param>
         /// <param name="timeBase">Time base.</param>
-        public static void ReadTrack(List<SequenceCommand> commands, Sequence s, int trackNum, int openTrackOffset, Dictionary<string, int> loopStartLabels, Dictionary<string, int> loopEndLabels, int timeBase) {
+        /// <param name="sequenceName">Sequence name.</param>
+        public static void ReadTrack(List<SequenceCommand> commands, Sequence s, int trackNum, int openTrackOffset, Dictionary<string, int> labels, int timeBase, string sequenceName, Dictionary<string, int> otherLabelTicks, ref int loopStartTicks, ref int loopEndTicks) {
 
             //Event pointer.
             int startTrackPointer = commands.Count;
@@ -474,9 +498,9 @@ namespace GotaSequenceLib {
             //No notewait.
             commands.Add(new SequenceCommand() { CommandType = SequenceCommands.NoteWait, Parameter = false });
 
-            //Loop map.
-            Dictionary<string, SequenceCommand> loopRefs = new Dictionary<string, SequenceCommand>();
-            List<string> loopEndsTakenCareOf = new List<string>();
+            //Loop start command index.
+            int loopStart = -1;
+            bool loopAdded = false;
 
             //Read each event.
             int eventNum = 0;
@@ -485,6 +509,30 @@ namespace GotaSequenceLib {
 
                 //Overtime.
                 uint overtime = 0;
+
+                //Loop.
+                /*if (loopEndTicks != -1 && loopStartTicks != -1 && !loopAdded) {
+                    if (events.Count == 1 || (e.AbsoluteTicks <= loopStartTicks && loopStartTicks < events[eventNum + 1].AbsoluteTicks)) {
+                        if (loopStartTicks < e.AbsoluteTicks) {
+                            commands.Add(new SequenceCommand() { CommandType = SequenceCommands.Wait, Parameter = (uint)Midi2SequenceTicks(loopStartTicks - lastTick, s.Division, timeBase) });
+                        } else if (loopStartTicks > e.AbsoluteTicks) {
+                            commands.Add(new SequenceCommand() { CommandType = SequenceCommands.Wait, Parameter = (uint)Midi2SequenceTicks(loopStartTicks - e.AbsoluteTicks, s.Division, timeBase) });
+                        }
+                        labels.Add("SMF_" + sequenceName + "_Track_" + trackNum + "_SSN_LOOPSTART", commands.Count);
+                        loopStart = commands.Count;
+                    }
+                }
+                if (loopEndTicks != -1 && loopStartTicks != -1 && !loopAdded) {
+                    if (events.Count == 1 || (e.AbsoluteTicks <= loopEndTicks && loopEndTicks < events[eventNum + 1].AbsoluteTicks)) {
+                        if (loopEndTicks < e.AbsoluteTicks) {
+                            commands.Add(new SequenceCommand() { CommandType = SequenceCommands.Wait, Parameter = (uint)Midi2SequenceTicks(loopEndTicks - lastTick, s.Division, timeBase) });
+                        } else if (loopEndTicks > e.AbsoluteTicks) {
+                            commands.Add(new SequenceCommand() { CommandType = SequenceCommands.Wait, Parameter = (uint)Midi2SequenceTicks(loopEndTicks - e.AbsoluteTicks, s.Division, timeBase) });
+                        }
+                        commands.Add(new SequenceCommand() { CommandType = SequenceCommands.Jump, Parameter = new UInt24Parameter() { m_Index = loopStart } });
+                        loopAdded = true;
+                    }
+                }*/
 
                 //Switch event type.
                 switch (e.MidiMessage.MessageType) {
@@ -855,19 +903,25 @@ namespace GotaSequenceLib {
                             case MetaType.Marker:
                                 AddWaitTime();
                                 string dat = Encoding.UTF8.GetString(met.GetBytes());
-                                if (dat.StartsWith("jump ") || dat.Equals("]") || dat.Equals("loop_end") || dat.Equals("loopEnd")) {
-                                    string target = "[";
-                                    if (dat.StartsWith("jump ")) { target = dat.Split(' ')[1]; }
-                                    if (loopRefs.ContainsKey("loop_start")) { target = "loop_start"; }
-                                    if (loopRefs.ContainsKey("loopStart")) { target = "loopStart"; }
-                                    if (loopRefs.ContainsKey(target)) {
-                                        commands.Add(new SequenceCommand() { CommandType = SequenceCommands.Jump, Parameter = new UInt24Parameter() { ReferenceCommand = loopRefs[target] } });
-                                    }
-                                    loopEndLabels.Add(dat, e.AbsoluteTicks);
-                                    loopEndsTakenCareOf.Add(dat);
+                                if (dat.Contains(": ")) {
+                                    try {
+                                        SequenceCommand c = new SequenceCommand(); //THIS DOES NOT TAKE CARE OF JUMPS AS IT WILL JUMP TO THE MARKER TRACK.
+                                        if (int.Parse(dat.Split(':')[0]) == trackNum) {
+                                            c.FromString(dat.Substring(dat.IndexOf(":") + 2), labels, new Dictionary<string, int>());
+                                            commands.Add(c);
+                                        }
+                                    } catch { }
                                 } else {
-                                    //loopStartLabels.Add(dat, e.AbsoluteTicks);
-                                    //loopRefs.Add(dat, commands.Last()); //It's supposed to be the future command.
+                                    string loopStartStr = "SMF_" + sequenceName + "_Track_" + trackNum + "_SSN_LOOPSTART";
+                                    string loopEndStr = "SMF_" + sequenceName + "_Track_" + trackNum + "_SSN_LOOPEND";
+                                    if (!labels.ContainsKey(loopStartStr) && (dat.Equals("[") || dat.ToLower().Equals("loopstart") || dat.ToLower().Equals("loop_start"))) {
+                                        labels.Add(loopStartStr, commands.Count);
+                                        loopStartTicks = e.AbsoluteTicks;
+                                    } else if (!labels.ContainsKey(loopEndStr) && (dat.Equals("]") || dat.ToLower().Equals("loopend") || dat.ToLower().Equals("loop_end"))) {
+                                        loopEndTicks = e.AbsoluteTicks;
+                                    } else {
+                                        labels.Add(dat, commands.Count);
+                                    }
                                 }
                                 break;
 

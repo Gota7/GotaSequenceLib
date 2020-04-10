@@ -207,6 +207,9 @@ namespace GotaSequenceLib {
                     foreach (var c in Commands) {
                         indexMap.Add(commandInd, (uint)w.Position);
                         if (c.CommandType == SequenceCommands.Note || p.CommandMap().ContainsKey(c.CommandType) || p.ExtendedCommands().ContainsKey(c.CommandType)) {
+                            if (p.ExtendedCommands().ContainsKey(c.CommandType)) {
+                                w.Write((byte)0);
+                            }
                             c.Write(w, p);
                         }
                         commandInd++;
@@ -377,6 +380,7 @@ namespace GotaSequenceLib {
         public string[] ToText() {
 
             //Command list.
+            ReadCommandData();
             List<string> l = new List<string>();
 
             //Add header.
@@ -430,9 +434,6 @@ namespace GotaSequenceLib {
             //Success by default.
             WritingCommandSuccess = true;
 
-            //Get platform.
-            var p = Platform();
-
             //Reset labels.
             PublicLabels = new Dictionary<string, int>();
             OtherLabels = new List<int>();
@@ -443,7 +444,7 @@ namespace GotaSequenceLib {
             List<string> t = text.ToList();
             int comNum = 0;
             for (int i = t.Count - 1; i >= 0; i--) {
-                t[i] = t[i].Replace("\t", " ").Replace("\r", "");
+                t[i] = t[i].Replace("\t", " ").Replace("\r", "").Replace("  ", " ").Replace("  ", " ").Replace("  ", " ").Replace("  ", " ").Replace("  ", " ");
                 try { t[i] = t[i].Split(';')[0]; } catch { }
                 if (t[i].Replace(" ", "").Length == 0) { t.RemoveAt(i); continue; }
                 for (int j = 0; j < t[i].Length; j++) {
@@ -484,7 +485,7 @@ namespace GotaSequenceLib {
                     continue;
                 }
                 SequenceCommand seq = new SequenceCommand();
-                try { seq.FromString(t[i], p, PublicLabels, privateLabels); } catch (Exception e) { WritingCommandSuccess = false; throw new Exception("Command " + i + ": \"" + t[i] + "\" is invalid.", e); }
+                try { seq.FromString(t[i], PublicLabels, privateLabels); } catch (Exception e) { WritingCommandSuccess = false; throw new Exception("Command " + i + ": \"" + t[i] + "\" is invalid.", e); }
                 Commands.Add(seq);
             }
 
@@ -502,15 +503,23 @@ namespace GotaSequenceLib {
 
             //Fin.
             Commands.Add(new SequenceCommand() { CommandType = SequenceCommands.Fin });
+            WriteCommandData();
 
         }
 
         /// <summary>
         /// Create a sequence from an MIDI.
         /// </summary>
-        /// <param name="b">The MIDI.</param>
-        public void FromMIDI(byte[] b) {
-
+        /// <param name="filePath">The MIDI path.</param>
+        /// <param name="timeBase">Time base.</param>
+        public void FromMIDI(string filePath, int timeBase = 48, bool privateLabelsForCalls = false) {
+            Sanford.Multimedia.Midi.Sequence s = new Sanford.Multimedia.Midi.Sequence(filePath);
+            Dictionary<string, int> pub;
+            List<int> priv;
+            Commands = SMF.ToSequenceCommands(s, out pub, out priv, Path.GetFileNameWithoutExtension(filePath), timeBase);
+            PublicLabels = pub;
+            OtherLabels = priv;
+            WriteCommandData();
         }
 
         /// <summary>

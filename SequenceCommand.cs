@@ -768,10 +768,9 @@ namespace GotaSequenceLib {
         /// Read a command from a string.
         /// </summary>
         /// <param name="s">The command string.</param>
-        /// <param name="p">The sequence platform.</param>
         /// <param name="publicLabels">Public labels.</param>
         /// <param name="privateLabels">Private labels.</param>
-        public void FromString(string s, SequencePlatform p, Dictionary<string, int> publicLabels, Dictionary<string, int> privateLabels) {
+        public void FromString(string s, Dictionary<string, int> publicLabels, Dictionary<string, int> privateLabels) {
 
             //Get base command.
             SequenceCommands b = SequenceCommands.Note;
@@ -792,7 +791,7 @@ namespace GotaSequenceLib {
 
             //Get command type.
             foreach (var e in CommandStrings) {
-                if (!e.Value.StartsWith("_") && cT.Equals(e.Value)) {
+                if (!e.Value.StartsWith("_") && (cT.Equals(e.Value) || c.Equals(e.Value))) {
                     b = e.Key;
                     if (c.Contains("porta") && !c.Contains("porta_on") && !c.Contains("porta_off")) { b = SequenceCommands.Porta; }
                     if (c.Contains("porta_time")) { b = SequenceCommands.PortaTime; }
@@ -907,12 +906,6 @@ namespace GotaSequenceLib {
                         Parameter = (uint)ParseData(data[dataPtr++], publicLabels, privateLabels);
                     }
                     break;
-            }
-
-            //Extended command.
-            if (p.ExtendedCommands().ContainsKey(b)) {
-                Parameter = Duplicate();
-                CommandType = SequenceCommands.Extended;
             }
 
             //Header flags.
