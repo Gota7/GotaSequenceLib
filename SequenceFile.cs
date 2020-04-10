@@ -484,7 +484,7 @@ namespace GotaSequenceLib {
                     continue;
                 }
                 SequenceCommand seq = new SequenceCommand();
-                try { seq.FromString(t[i], p, PublicLabels, privateLabels); } catch { WritingCommandSuccess = false; throw new Exception("Command " + i + ": \"" + t[i] + "\" is invalid."); }
+                try { seq.FromString(t[i], p, PublicLabels, privateLabels); } catch (Exception e) { WritingCommandSuccess = false; throw new Exception("Command " + i + ": \"" + t[i] + "\" is invalid.", e); }
                 Commands.Add(seq);
             }
 
