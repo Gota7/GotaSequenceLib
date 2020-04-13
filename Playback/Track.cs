@@ -58,7 +58,6 @@ namespace GotaSequenceLib.Playback {
         public byte CallStackDepth;
         public int CurEvent;
         public bool VariableFlag;
-        public bool DoCommandWork;
         public int BankNum;
         public bool NoteDown;
         public short[] Vars = new short[0x10];
@@ -121,7 +120,7 @@ namespace GotaSequenceLib.Playback {
             Stopped = Tie = WaitingForNoteToFinishBeforeContinuingXD = Portamento = false;
             Allocated = Enabled = Index == 0;
             CurEvent = 0;
-            Mono = VariableFlag = DoCommandWork = true;
+            Mono = VariableFlag = true;
             CallStackDepth = 0;
             Voice = LFODepth = 0;
             PitchBend = Panpot = Transpose = 0;
