@@ -207,9 +207,6 @@ namespace GotaSequenceLib {
                     foreach (var c in Commands) {
                         indexMap.Add(commandInd, (uint)w.Position);
                         if (c.CommandType == SequenceCommands.Note || p.CommandMap().ContainsKey(c.CommandType) || p.ExtendedCommands().ContainsKey(c.CommandType)) {
-                            if (p.ExtendedCommands().ContainsKey(c.CommandType)) {
-                                w.Write((byte)0);
-                            }
                             c.Write(w, p);
                         }
                         commandInd++;
@@ -530,6 +527,17 @@ namespace GotaSequenceLib {
             ReadCommandData();
             Sanford.Multimedia.Midi.Sequence s = SMF.FromSequenceCommands(Commands, 0);
             s.Save(filePath);
+        }
+
+        /// <summary>
+        /// Copy from another sequence.
+        /// </summary>
+        /// <param name="other">Other sequence.</param>
+        public void CopyFromOther(SequenceFile other) {
+            other.ReadCommandData();
+            Commands = other.Commands;
+            PublicLabels = other.PublicLabels;
+            OtherLabels = other.OtherLabels;
         }
 
     }

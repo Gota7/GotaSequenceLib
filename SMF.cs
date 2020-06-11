@@ -27,8 +27,8 @@ namespace GotaSequenceLib {
         /// <returns>The sequence.</returns>
         public static Sequence FromSequenceCommands(List<SequenceCommand> commands, int startIndex) {
 
-            //New sequence with default 48 ticks per quarter note.
-            var m = new Sequence(48) { Format = 1 };
+            //New sequence with default 960 ticks per quarter note.
+            var m = new Sequence(960) { Format = 1 };
 
             //Add and read initial track.
             m.Add(new Track());
@@ -93,6 +93,7 @@ namespace GotaSequenceLib {
             int lastNote = -1;
             bool varFlag;
             short[] trackVars = new short[] { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+            int timeBase = 48;
 
             //Loop forever.
             while (currCommand < commands.Count) {
@@ -119,14 +120,14 @@ namespace GotaSequenceLib {
                     //Note.
                     case SequenceCommands.Note:
                         t.Insert(ticks, new ChannelMessage(ChannelCommand.NoteOn, trackNum, args[0], args[1]));
-                        if (!tie) { t.Insert(ticks + args[2], new ChannelMessage(ChannelCommand.NoteOff, trackNum, args[0])); }
+                        if (!tie) { t.Insert(ticks + Sequence2MidiTicks(args[2], 960, timeBase), new ChannelMessage(ChannelCommand.NoteOff, trackNum, args[0])); }
                         lastNote = args[0];
-                        if (noteWait) { ticks += args[2]; }
+                        if (noteWait) { ticks += Sequence2MidiTicks(args[2], 960, timeBase); }
                         break;
 
                     //Wait.
                     case SequenceCommands.Wait:
-                        ticks += args[0];
+                        ticks += Sequence2MidiTicks(args[0], 960, timeBase);
                         break;
 
                     //Program change.
@@ -152,6 +153,11 @@ namespace GotaSequenceLib {
                             currCommand = args[0];
                             continue;
                         }
+                        break;
+
+                    //Timebase.
+                    case SequenceCommands.Timebase:
+                        timeBase = args[0];
                         break;
 
                     //Hold.
@@ -392,12 +398,9 @@ namespace GotaSequenceLib {
                         break;
 
                     //Not implemented.
-                    case SequenceCommands.Timebase:
-                    case SequenceCommands.VelocityRange:
-                    case SequenceCommands.ModPhase:
-                    case SequenceCommands.ModCurve:
-                    case SequenceCommands.FrontBypass:
-                        throw new NotImplementedException();
+                    default:
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
 
                 }
 
@@ -999,6 +1002,17 @@ namespace GotaSequenceLib {
         /// <returns>Sequence ticks.</returns>
         public static int Midi2SequenceTicks(int midiTicks, int division, int timeBase = 48) {
             return (int)(midiTicks / (double)division * timeBase);
+        }
+
+        /// <summary>
+        /// Convert sequence to MIDI ticks.
+        /// </summary>
+        /// <param name="sequenceTicks">Sequence ticks.</param>
+        /// <param name="division">Division.</param>
+        /// <param name="timeBase">Time base.</param>
+        /// <returns>Ticks in MIDI.</returns>
+        public static int Sequence2MidiTicks(int sequenceTicks, int division, int timeBase = 48) {
+            return (int)(sequenceTicks * division / (double)timeBase);
         }
 
         /// <summary>
