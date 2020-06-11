@@ -40,11 +40,13 @@ namespace GotaSequenceLib {
             int labelNum = 0;
             List<long> jumpsAdded = new List<long>();
             List<Tuple<int, int>> jumpsToAdd = new List<Tuple<int, int>>();
-            foreach (var j in commands.Where(x => Player.GetTrueCommandType(x) == SequenceCommands.Jump)) {
-                int arg = Player.GetCommandParameter(j, 0, _rand, commands);
-                int ticks = tickMap[commands.IndexOf(commands[arg])];
-                int jumpInd = commands.IndexOf(j);
-                int ticksJump = tickMap[jumpInd];
+
+            // We aren't guaranteed to hit every instruction in the file, so we loop through tickMap, which contains the instructions that we did hit.
+            foreach (var cmdTicks in tickMap.Where(x => Player.GetTrueCommandType(commands[x.Key]) == SequenceCommands.Jump)) {
+                int ticksJump = cmdTicks.Value;
+                var cmd = commands[cmdTicks.Key];
+                int arg = Player.GetCommandParameter(cmd, 0, _rand, commands);
+                int ticks = tickMap[arg];
                 long tickHash = (ticks << 32) | ticksJump;
                 if (!jumpsAdded.Contains(tickHash)) {
                     jumpsAdded.Add(tickHash);
