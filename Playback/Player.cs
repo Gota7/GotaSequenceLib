@@ -1217,7 +1217,7 @@ namespace GotaSequenceLib.Playback {
                     Pause();
                 }
                 InitEmulation();
-                while (ElapsedTicks == ticks) {
+                while (ElapsedTicks != ticks) {
                     while (_tempoStack >= 240) {
                         _tempoStack -= 240;
                         for (int i = 0; i < 0x10; i++) {
