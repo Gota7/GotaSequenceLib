@@ -295,7 +295,8 @@ namespace GotaSequenceLib.Playback {
                 bool playing = state == PlayerState.Playing;
                 bool recording = state == PlayerState.Recording;
                 if (!playing && !recording) {
-                    goto stop;
+                    _time.Stop();
+                    return;
                 }
 
                 void MixerProcess() {
@@ -343,7 +344,8 @@ namespace GotaSequenceLib.Playback {
                         MixerProcess();
                         State = PlayerState.Stopped;
                         SongEnded?.Invoke();
-                        goto stop;
+                        _time.Stop();
+                        return;
                     }
                 }
                 _tempoStack += _tempo;
@@ -352,7 +354,7 @@ namespace GotaSequenceLib.Playback {
                     _time.Wait();
                 }
             }
-        stop:
+
             _time.Stop();
         }
 
@@ -579,433 +581,429 @@ namespace GotaSequenceLib.Playback {
             SequenceCommands trueCommandType = GetTrueCommandType(c);
 
             //If command.
-            if (c.CommandType == SequenceCommands.If && !track.VariableFlag) {
-                goto skip_processing;
-            }
+            if (c.CommandType != SequenceCommands.If || track.VariableFlag) {
+                //Switch the current command.
+                switch (trueCommandType) {
 
-            //Switch the current command.
-            switch (trueCommandType) {
+                    //Note.
+                    case SequenceCommands.Note: {
+                        int duration = args[2];
 
-                //Note.
-                case SequenceCommands.Note: {
-                    int duration = args[2];
-
-                    int k = (int)args[0] + track.Transpose;
-                    if (k < 0) {
-                        k = 0;
-                    } else if (k > 0x7F) {
-                        k = 0x7F;
-                    }
-                    byte key = (byte)k;
-                    PlayNote(track, key, (byte)args[1], duration);
-                    track.PortamentoKey = key;
-                    if (track.Mono) {
-                        track.Rest = duration;
-                        if (duration == 0) {
-                            track.WaitingForNoteToFinishBeforeContinuingXD = true;
+                        int k = (int)args[0] + track.Transpose;
+                        if (k < 0) {
+                            k = 0;
+                        } else if (k > 0x7F) {
+                            k = 0x7F;
                         }
-                    }
-                    break;
-                }
-
-                //Wait.
-                case SequenceCommands.Wait:
-                    track.Rest = args[0];
-                    break;
-
-                //Program change.
-                case SequenceCommands.ProgramChange:
-                    track.Voice = args[0];
-                    break;
-
-                //Open track.
-                case SequenceCommands.OpenTrack:
-                    if (trackIndex == 0) {
-                        Track newTrack = _tracks[args[0]];
-                        if (newTrack.Allocated && !newTrack.Enabled) {
-                            newTrack.Enabled = true;
-                            newTrack.CurEvent = args[1];
+                        byte key = (byte)k;
+                        PlayNote(track, key, (byte)args[1], duration);
+                        track.PortamentoKey = key;
+                        if (track.Mono) {
+                            track.Rest = duration;
+                            if (duration == 0) {
+                                track.WaitingForNoteToFinishBeforeContinuingXD = true;
+                            }
                         }
+                        break;
                     }
-                    break;
 
-                //Jump.
-                case SequenceCommands.Jump:
-                    track.CurEvent = args[0];
-                    increment = false;
-                    break;
+                    //Wait.
+                    case SequenceCommands.Wait:
+                        track.Rest = args[0];
+                        break;
 
-                //Call.
-                case SequenceCommands.Call:
-                    if (track.CallStackDepth < 3) {
-                        track.CallStack[track.CallStackDepth] = track.CurEvent + 1;
-                        track.CallStackDepth++;
+                    //Program change.
+                    case SequenceCommands.ProgramChange:
+                        track.Voice = args[0];
+                        break;
+
+                    //Open track.
+                    case SequenceCommands.OpenTrack:
+                        if (trackIndex == 0) {
+                            Track newTrack = _tracks[args[0]];
+                            if (newTrack.Allocated && !newTrack.Enabled) {
+                                newTrack.Enabled = true;
+                                newTrack.CurEvent = args[1];
+                            }
+                        }
+                        break;
+
+                    //Jump.
+                    case SequenceCommands.Jump:
                         track.CurEvent = args[0];
                         increment = false;
+                        break;
+
+                    //Call.
+                    case SequenceCommands.Call:
+                        if (track.CallStackDepth < 3) {
+                            track.CallStack[track.CallStackDepth] = track.CurEvent + 1;
+                            track.CallStackDepth++;
+                            track.CurEvent = args[0];
+                            increment = false;
+                        }
+                        break;
+
+                    //Random.
+                    case SequenceCommands.Random:
+                    case SequenceCommands.Variable:
+                    case SequenceCommands.If:
+                    case SequenceCommands.Time:
+                    case SequenceCommands.TimeRandom:
+                    case SequenceCommands.TimeVariable:
+                        throw new Exception("Gota messed up."); //This should NOT happen with the true command type.
+
+                    //Hold.
+                    case SequenceCommands.EnvHold:
+                        track.Hold = (byte)args[0];
+                        break;
+
+                    //Bank select.
+                    case SequenceCommands.BankSelect:
+                        track.BankNum = args[0];
+                        break;
+
+                    //Pan.
+                    case SequenceCommands.Pan:
+                        track.Panpot = (sbyte)(args[0] - 0x40);
+                        break;
+
+                    //Volume.
+                    case SequenceCommands.Volume:
+                        track.Volume = (byte)args[0];
+                        break;
+
+                    //Main volume.
+                    case SequenceCommands.MainVolume:
+                        Volume = (byte)args[0];
+                        break;
+
+                    //Transpose.
+                    case SequenceCommands.Transpose:
+                        track.Transpose = (sbyte)args[0];
+                        break;
+
+                    //Pitch bend.
+                    case SequenceCommands.PitchBend:
+                        track.PitchBend = (sbyte)args[0];
+                        break;
+
+                    //Pitch bend.
+                    case SequenceCommands.BendRange:
+                        track.PitchBendRange = (byte)args[0];
+                        break;
+
+                    //Priority.
+                    case SequenceCommands.Prio:
+                        track.Priority = (byte)args[0];
+                        break;
+
+                    //Note wait.
+                    case SequenceCommands.NoteWait:
+                        track.Mono = args[0] > 0;
+                        break;
+
+                    //Tie.
+                    case SequenceCommands.Tie:
+                        track.Tie = args[0] > 0;
+                        track.StopAllChannels();
+                        break;
+
+                    //Porta.
+                    case SequenceCommands.Porta: {
+                        int k = args[0] + track.Transpose;
+                        if (k < 0) {
+                            k = 0;
+                        } else if (k > 0x7F) {
+                            k = 0x7F;
+                        }
+                        track.PortamentoKey = (byte)k;
+                        track.Portamento = true;
+
+                        break;
                     }
-                    break;
 
-                //Random.       
-                case SequenceCommands.Random:
-                case SequenceCommands.Variable:
-                case SequenceCommands.If:
-                case SequenceCommands.Time:
-                case SequenceCommands.TimeRandom:
-                case SequenceCommands.TimeVariable:
-                    throw new Exception("Gota messed up."); //This should NOT happen with the true command type.
+                    //Mod depth.
+                    case SequenceCommands.ModDepth:
+                        track.LFODepth = (byte)args[0];
+                        break;
 
-                //Hold.
-                case SequenceCommands.EnvHold:
-                    track.Hold = (byte)args[0];
-                    break;
+                    //Mod speed.
+                    case SequenceCommands.ModSpeed:
+                        track.LFOSpeed = (byte)args[0];
+                        break;
 
-                //Bank select.
-                case SequenceCommands.BankSelect:
-                    track.BankNum = args[0];
-                    break;
+                    //Mod type.
+                    case SequenceCommands.ModType:
+                        track.LFOType = (LFOType)args[0];
+                        break;
 
-                //Pan.
-                case SequenceCommands.Pan:
-                    track.Panpot = (sbyte)(args[0] - 0x40);
-                    break;
+                    //Mod range.
+                    case SequenceCommands.ModRange:
+                        track.LFORange = (byte)args[0];
+                        break;
 
-                //Volume.
-                case SequenceCommands.Volume:
-                    track.Volume = (byte)args[0];
-                    break;
+                    //Porta switch.
+                    case SequenceCommands.PortaSw:
+                        track.Portamento = args[0] > 0;
+                        break;
 
-                //Main volume.
-                case SequenceCommands.MainVolume:
-                    Volume = (byte)args[0];
-                    break;
+                    //Porta time.
+                    case SequenceCommands.PortaTime:
+                        track.PortamentoTime = (byte)args[0];
+                        break;
 
-                //Transpose.
-                case SequenceCommands.Transpose:
-                    track.Transpose = (sbyte)args[0];
-                    break;
+                    //Attack.
+                    case SequenceCommands.Attack:
+                        track.Attack = (byte)args[0];
+                        break;
 
-                //Pitch bend.
-                case SequenceCommands.PitchBend:
-                    track.PitchBend = (sbyte)args[0];
-                    break;
+                    //Decay.
+                    case SequenceCommands.Decay:
+                        track.Decay = (byte)args[0];
+                        break;
 
-                //Pitch bend.
-                case SequenceCommands.BendRange:
-                    track.PitchBendRange = (byte)args[0];
-                    break;
+                    //Sustain.
+                    case SequenceCommands.Sustain:
+                        track.Sustain = (byte)args[0];
+                        break;
 
-                //Priority.
-                case SequenceCommands.Prio:
-                    track.Priority = (byte)args[0];
-                    break;
+                    //Release.
+                    case SequenceCommands.Release:
+                        track.Release = (byte)args[0];
+                        break;
 
-                //Note wait.
-                case SequenceCommands.NoteWait:
-                    track.Mono = args[0] > 0;
-                    break;
+                    //Loop start.
+                    case SequenceCommands.LoopStart:
+                        if (track.CallStackDepth < 3) {
+                            track.CallStack[track.CallStackDepth] = track.CurEvent;
+                            track.CallStackLoops[track.CallStackDepth] = (byte)args[0];
+                            track.CallStackDepth++;
+                        }
+                        break;
 
-                //Tie.
-                case SequenceCommands.Tie:
-                    track.Tie = args[0] > 0;
-                    track.StopAllChannels();
-                    break;
+                    //Volume 2.
+                    case SequenceCommands.Volume2:
+                        track.Expression = (byte)args[0];
+                        break;
 
-                //Porta.
-                case SequenceCommands.Porta: {
-                    int k = args[0] + track.Transpose;
-                    if (k < 0) {
-                        k = 0;
-                    } else if (k > 0x7F) {
-                        k = 0x7F;
-                    }
-                    track.PortamentoKey = (byte)k;
-                    track.Portamento = true;
-                    
-                    break;
-                }
+                    //Print var.
+                    case SequenceCommands.PrintVar:
+                        Console.WriteLine("Variable " + args[0] + " = " + GetVar(args[0], trackIndex));
+                        break;
 
-                //Mod depth.
-                case SequenceCommands.ModDepth:
-                    track.LFODepth = (byte)args[0];
-                    break;
+                    //Mod delay.
+                    case SequenceCommands.ModDelay:
+                        track.LFODelay = (ushort)args[0];
+                        break;
 
-                //Mod speed.
-                case SequenceCommands.ModSpeed:
-                    track.LFOSpeed = (byte)args[0];
-                    break;
+                    //Tempo.
+                    case SequenceCommands.Tempo:
+                        _tempo = (ushort)args[0];
+                        break;
 
-                //Mod type.
-                case SequenceCommands.ModType:
-                    track.LFOType = (LFOType)args[0];
-                    break;
+                    //Sweep pitch.
+                    case SequenceCommands.SweepPitch:
+                        track.SweepPitch = (short)args[0];
+                        break;
 
-                //Mod range.
-                case SequenceCommands.ModRange:
-                    track.LFORange = (byte)args[0];
-                    break;
+                    //Loop end.
+                    case SequenceCommands.LoopEnd:
+                        if (track.CallStackDepth != 0) {
+                            byte count = track.CallStackLoops[track.CallStackDepth - 1];
+                            if (count != 0) {
+                                count--;
+                                if (count == 0) {
+                                    track.CallStackDepth--;
+                                    break;
+                                }
+                            }
+                            track.CallStackLoops[track.CallStackDepth - 1] = count;
+                            track.CurEvent = track.CallStack[track.CallStackDepth - 1];
+                            increment = false;
+                        }
+                        break;
 
-                //Porta switch.
-                case SequenceCommands.PortaSw:
-                    track.Portamento = args[0] > 0;
-                    break;
+                    //Return.
+                    case SequenceCommands.Return:
+                        if (track.CallStackDepth != 0) {
+                            track.CallStackDepth--;
+                            track.CurEvent = track.CallStack[track.CallStackDepth];
+                            increment = false;
+                        }
+                        break;
 
-                //Porta time.
-                case SequenceCommands.PortaTime:
-                    track.PortamentoTime = (byte)args[0];
-                    break;
-
-                //Attack.
-                case SequenceCommands.Attack:
-                    track.Attack = (byte)args[0];
-                    break;
-
-                //Decay.
-                case SequenceCommands.Decay:
-                    track.Decay = (byte)args[0];
-                    break;
-
-                //Sustain.
-                case SequenceCommands.Sustain:
-                    track.Sustain = (byte)args[0];
-                    break;
-
-                //Release.
-                case SequenceCommands.Release:
-                    track.Release = (byte)args[0];
-                    break;
-
-                //Loop start.
-                case SequenceCommands.LoopStart:
-                    if (track.CallStackDepth < 3) {
-                        track.CallStack[track.CallStackDepth] = track.CurEvent;
-                        track.CallStackLoops[track.CallStackDepth] = (byte)args[0];
-                        track.CallStackDepth++;
-                    }
-                    break;
-
-                //Volume 2.
-                case SequenceCommands.Volume2:
-                    track.Expression = (byte)args[0];
-                    break;
-
-                //Print var.
-                case SequenceCommands.PrintVar:
-                    Console.WriteLine("Variable " + args[0] + " = " + GetVar(args[0], trackIndex));
-                    break;
-
-                //Mod delay.
-                case SequenceCommands.ModDelay:
-                    track.LFODelay = (ushort)args[0];
-                    break;
-
-                //Tempo.
-                case SequenceCommands.Tempo:
-                    _tempo = (ushort)args[0];
-                    break;
-
-                //Sweep pitch.
-                case SequenceCommands.SweepPitch:
-                    track.SweepPitch = (short)args[0];
-                    break;
-
-                //Loop end.
-                case SequenceCommands.LoopEnd:
-                    if (track.CallStackDepth != 0) {
-                        byte count = track.CallStackLoops[track.CallStackDepth - 1];
-                        if (count != 0) {
-                            count--;
-                            if (count == 0) {
-                                track.CallStackDepth--;
-                                break;
+                    //Allocate tracks.
+                    case SequenceCommands.AllocateTrack:
+                        if (track.Index == 0) {
+                            for (int i = 0; i < 0x10; i++) {
+                                if ((args[0] & (1 << i)) != 0) {
+                                    _tracks[i].Allocated = true;
+                                }
                             }
                         }
-                        track.CallStackLoops[track.CallStackDepth - 1] = count;
-                        track.CurEvent = track.CallStack[track.CallStackDepth - 1];
-                        increment = false;
-                    }
-                    break;
+                        break;
 
-                //Return.
-                case SequenceCommands.Return:
-                    if (track.CallStackDepth != 0) {
-                        track.CallStackDepth--;
-                        track.CurEvent = track.CallStack[track.CallStackDepth];
+                    //Fin.
+                    case SequenceCommands.Fin:
+                        track.Stopped = true;
                         increment = false;
-                    }
-                    break;
+                        break;
 
-                //Allocate tracks.
-                case SequenceCommands.AllocateTrack:
-                    if (track.Index == 0) {
-                        for (int i = 0; i < 0x10; i++) {
-                            if ((args[0] & (1 << i)) != 0) {
-                                _tracks[i].Allocated = true;
-                            }
+                    //Set var.
+                    case SequenceCommands.SetVar:
+                        SetVar(args[0], trackIndex, (short)args[1]);
+                        break;
+
+                    //Add var.
+                    case SequenceCommands.AddVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) + args[1]));
+                        break;
+
+                    //Sub var.
+                    case SequenceCommands.SubVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) - args[1]));
+                        break;
+
+                    //Mul var.
+                    case SequenceCommands.MulVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) * args[1]));
+                        break;
+
+                    //Div var.
+                    case SequenceCommands.DivVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) / args[1]));
+                        break;
+
+                    //Shift var.
+                    case SequenceCommands.ShiftVar:
+                        SetVar(args[0], trackIndex, args[1] < 0 ? (short)(GetVar(args[0], trackIndex) >> -args[1]) : (short)(GetVar(args[0], trackIndex) << args[1]));
+                        break;
+
+                    //Rand var.
+                    case SequenceCommands.RandVar: {
+                        bool negate = false;
+                        if (args[1] < 0) {
+                            negate = true;
+                            args[1] = (short)-args[1];
                         }
+                        short val = (short)_rand.Next(args[1] + 1);
+                        if (negate) {
+                            val = (short)-val;
+                        }
+                        SetVar(args[0], trackIndex, val);
+
+                        break;
                     }
-                    break;
 
-                //Fin.
-                case SequenceCommands.Fin:
-                    track.Stopped = true;
-                    increment = false;
-                    break;
+                    //And var.
+                    case SequenceCommands.AndVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) & args[1]));
+                        break;
 
-                //Set var.
-                case SequenceCommands.SetVar:
-                    SetVar(args[0], trackIndex, (short)args[1]);
-                    break;
+                    //Or var.
+                    case SequenceCommands.OrVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) | (short)args[1]));
+                        break;
 
-                //Add var.
-                case SequenceCommands.AddVar:
-                    SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) + args[1]));
-                    break;
+                    //Xor var.
+                    case SequenceCommands.XorVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) ^ args[1]));
+                        break;
 
-                //Sub var.
-                case SequenceCommands.SubVar:
-                    SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) - args[1]));
-                    break;
+                    //Not var.
+                    case SequenceCommands.NotVar:
+                        SetVar(args[0], trackIndex, (short)((~(GetVar(args[0], trackIndex) & args[1])) | (GetVar(args[0], trackIndex) & (~args[0]))));
+                        break;
 
-                //Mul var.
-                case SequenceCommands.MulVar:
-                    SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) * args[1]));
-                    break;
+                    //Mod var.
+                    case SequenceCommands.ModVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) % args[1]));
+                        break;
 
-                //Div var.
-                case SequenceCommands.DivVar:
-                    SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) / args[1]));
-                    break;
+                    //Compare equal.
+                    case SequenceCommands.CmpEq:
+                        track.VariableFlag = GetVar(args[0], trackIndex) == args[1];
+                        break;
 
-                //Shift var.
-                case SequenceCommands.ShiftVar:
-                    SetVar(args[0], trackIndex, args[1] < 0 ? (short)(GetVar(args[0], trackIndex) >> -args[1]) : (short)(GetVar(args[0], trackIndex) << args[1]));
-                    break;
+                    //Compare greater than or equal.
+                    case SequenceCommands.CmpGe:
+                        track.VariableFlag = GetVar(args[0], trackIndex) >= args[1];
+                        break;
 
-                //Rand var.
-                case SequenceCommands.RandVar: {
-                    bool negate = false;
-                    if (args[1] < 0) {
-                        negate = true;
-                        args[1] = (short)-args[1];
-                    }
-                    short val = (short)_rand.Next(args[1] + 1);
-                    if (negate) {
-                        val = (short)-val;
-                    }
-                    SetVar(args[0], trackIndex, val);
+                    //Compare greater than.
+                    case SequenceCommands.CmpGt:
+                        track.VariableFlag = GetVar(args[0], trackIndex) > args[1];
+                        break;
 
-                    break;
+                    //Compare less than or equal.
+                    case SequenceCommands.CmpLe:
+                        track.VariableFlag = GetVar(args[0], trackIndex) <= args[1];
+                        break;
+
+                    //Compare less than.
+                    case SequenceCommands.CmpLt:
+                        track.VariableFlag = GetVar(args[0], trackIndex) < args[1];
+                        break;
+
+                    //Compare not equal.
+                    case SequenceCommands.CmpNe:
+                        track.VariableFlag = GetVar(args[0], trackIndex) != args[1];
+                        break;
+
+                    //Usercall does nothing.
+                    case SequenceCommands.UserCall:
+                        break;
+
+                    //Not implemented.
+                    case SequenceCommands.Timebase:
+                    case SequenceCommands.Monophonic:
+                    case SequenceCommands.VelocityRange:
+                    case SequenceCommands.BiquadType:
+                    case SequenceCommands.BiquadValue:
+                    case SequenceCommands.ModPhase:
+                    case SequenceCommands.ModCurve:
+                    case SequenceCommands.FrontBypass:
+                    case SequenceCommands.SurroundPan:
+                    case SequenceCommands.LpfCutoff:
+                    case SequenceCommands.FxSendA:
+                    case SequenceCommands.FxSendB:
+                    case SequenceCommands.MainSend:
+                    case SequenceCommands.InitPan:
+                    case SequenceCommands.Mute:
+                    case SequenceCommands.FxSendC:
+                    case SequenceCommands.Damper:
+                    case SequenceCommands.ModPeriod:
+                    case SequenceCommands.EnvReset:
+                    case SequenceCommands.Mod2Curve:
+                    case SequenceCommands.Mod2Phase:
+                    case SequenceCommands.Mod2Depth:
+                    case SequenceCommands.Mod2Speed:
+                    case SequenceCommands.Mod2Type:
+                    case SequenceCommands.Mod2Range:
+                    case SequenceCommands.Mod2Delay:
+                    case SequenceCommands.Mod2Period:
+                    case SequenceCommands.Mod3Curve:
+                    case SequenceCommands.Mod3Phase:
+                    case SequenceCommands.Mod3Depth:
+                    case SequenceCommands.Mod3Speed:
+                    case SequenceCommands.Mod3Type:
+                    case SequenceCommands.Mod3Range:
+                    case SequenceCommands.Mod3Delay:
+                    case SequenceCommands.Mod3Period:
+                    case SequenceCommands.Mod4Curve:
+                    case SequenceCommands.Mod4Phase:
+                    case SequenceCommands.Mod4Depth:
+                    case SequenceCommands.Mod4Speed:
+                    case SequenceCommands.Mod4Type:
+                    case SequenceCommands.Mod4Range:
+                    case SequenceCommands.Mod4Delay:
+                    case SequenceCommands.Mod4Period:
+                        Console.WriteLine("Command not implemented!");
+                        break;
+
                 }
-
-                //And var.
-                case SequenceCommands.AndVar:
-                    SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) & args[1]));
-                    break;
-
-                //Or var.
-                case SequenceCommands.OrVar:
-                    SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) | (short)args[1]));
-                    break;
-
-                //Xor var.
-                case SequenceCommands.XorVar:
-                    SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) ^ args[1]));
-                    break;
-
-                //Not var.
-                case SequenceCommands.NotVar:
-                    SetVar(args[0], trackIndex, (short)((~(GetVar(args[0], trackIndex) & args[1])) | (GetVar(args[0], trackIndex) & (~args[0]))));
-                    break;
-
-                //Mod var.
-                case SequenceCommands.ModVar:
-                    SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) % args[1]));
-                    break;
-
-                //Compare equal.
-                case SequenceCommands.CmpEq:
-                    track.VariableFlag = GetVar(args[0], trackIndex) == args[1];
-                    break;
-
-                //Compare greater than or equal.
-                case SequenceCommands.CmpGe:
-                    track.VariableFlag = GetVar(args[0], trackIndex) >= args[1];
-                    break;
-
-                //Compare greater than.
-                case SequenceCommands.CmpGt:
-                    track.VariableFlag = GetVar(args[0], trackIndex) > args[1];
-                    break;
-
-                //Compare less than or equal.
-                case SequenceCommands.CmpLe:
-                    track.VariableFlag = GetVar(args[0], trackIndex) <= args[1];
-                    break;
-
-                //Compare less than.
-                case SequenceCommands.CmpLt:
-                    track.VariableFlag = GetVar(args[0], trackIndex) < args[1];
-                    break;
-
-                //Compare not equal.
-                case SequenceCommands.CmpNe:
-                    track.VariableFlag = GetVar(args[0], trackIndex) != args[1];
-                    break;
-
-                //Usercall does nothing.
-                case SequenceCommands.UserCall:
-                    break;
-
-                //Not implemented.
-                case SequenceCommands.Timebase:
-                case SequenceCommands.Monophonic:
-                case SequenceCommands.VelocityRange:
-                case SequenceCommands.BiquadType:
-                case SequenceCommands.BiquadValue:
-                case SequenceCommands.ModPhase:
-                case SequenceCommands.ModCurve:
-                case SequenceCommands.FrontBypass:
-                case SequenceCommands.SurroundPan:
-                case SequenceCommands.LpfCutoff:
-                case SequenceCommands.FxSendA:
-                case SequenceCommands.FxSendB:
-                case SequenceCommands.MainSend:
-                case SequenceCommands.InitPan:
-                case SequenceCommands.Mute:
-                case SequenceCommands.FxSendC:
-                case SequenceCommands.Damper:
-                case SequenceCommands.ModPeriod:
-                case SequenceCommands.EnvReset:
-                case SequenceCommands.Mod2Curve:
-                case SequenceCommands.Mod2Phase:
-                case SequenceCommands.Mod2Depth:
-                case SequenceCommands.Mod2Speed:
-                case SequenceCommands.Mod2Type:
-                case SequenceCommands.Mod2Range:
-                case SequenceCommands.Mod2Delay:
-                case SequenceCommands.Mod2Period:
-                case SequenceCommands.Mod3Curve:
-                case SequenceCommands.Mod3Phase:
-                case SequenceCommands.Mod3Depth:
-                case SequenceCommands.Mod3Speed:
-                case SequenceCommands.Mod3Type:
-                case SequenceCommands.Mod3Range:
-                case SequenceCommands.Mod3Delay:
-                case SequenceCommands.Mod3Period:
-                case SequenceCommands.Mod4Curve:
-                case SequenceCommands.Mod4Phase:
-                case SequenceCommands.Mod4Depth:
-                case SequenceCommands.Mod4Speed:
-                case SequenceCommands.Mod4Type:
-                case SequenceCommands.Mod4Range:
-                case SequenceCommands.Mod4Delay:
-                case SequenceCommands.Mod4Period:
-                    Console.WriteLine("Command not implemented!");
-                    break;
-
             }
-
-            skip_processing:
 
             //If the index should be incremented.
             if (increment) {
@@ -1180,7 +1178,7 @@ namespace GotaSequenceLib.Playback {
                 currEvent++;
 
             }
-        
+
         }
 
         /// <summary>
@@ -1191,7 +1189,7 @@ namespace GotaSequenceLib.Playback {
         public static SequenceCommands GetTrueCommandType(SequenceCommand s) {
 
             //Switch type.
-            switch (s.CommandType) { 
+            switch (s.CommandType) {
                 case SequenceCommands.Random:
                 case SequenceCommands.TimeRandom:
                     return GetTrueCommandType((s.Parameter as RandomParameter).Command);
@@ -1206,7 +1204,7 @@ namespace GotaSequenceLib.Playback {
 
             //Default.
             return s.CommandType;
-        
+
         }
 
         /// <summary>
@@ -1219,32 +1217,28 @@ namespace GotaSequenceLib.Playback {
                     Pause();
                 }
                 InitEmulation();
-                while (true) {
-                    if (ElapsedTicks == ticks) {
-                        goto finish;
-                    } else {
-                        while (_tempoStack >= 240) {
-                            _tempoStack -= 240;
-                            for (int i = 0; i < 0x10; i++) {
-                                Track track = _tracks[i];
-                                if (track.Enabled && !track.Stopped) {
-                                    track.Tick();
-                                    while (track.Rest == 0 && !track.WaitingForNoteToFinishBeforeContinuingXD && !track.Stopped) {
-                                        ExecuteNext(i);
-                                    }
+                while (ElapsedTicks != ticks) {
+                    while (_tempoStack >= 240) {
+                        _tempoStack -= 240;
+                        for (int i = 0; i < 0x10; i++) {
+                            Track track = _tracks[i];
+                            if (track.Enabled && !track.Stopped) {
+                                track.Tick();
+                                while (track.Rest == 0 && !track.WaitingForNoteToFinishBeforeContinuingXD && !track.Stopped) {
+                                    ExecuteNext(i);
                                 }
                             }
-                            ElapsedTicks++;
-                            if (ElapsedTicks == ticks) {
-                                goto finish;
-                            }
                         }
-                        _tempoStack += _tempo;
-                        _mixer.ChannelTick();
-                        _mixer.EmulateProcess();
+                        ElapsedTicks++;
+                        if (ElapsedTicks == ticks) {
+                            break;
+                        }
                     }
+                    // Does it matter if this happens one last time before the loop ends?
+                    _tempoStack += _tempo;
+                    _mixer.ChannelTick();
+                    _mixer.EmulateProcess();
                 }
-            finish:
                 for (int i = 0; i < 0x10; i++) {
                     _tracks[i].StopAllChannels();
                 }
