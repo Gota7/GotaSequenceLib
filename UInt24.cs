@@ -10,7 +10,7 @@ namespace GotaSequenceLib {
     /// <summary>
     /// Unsigned 24-bit integer.
     /// </summary>
-    public sealed class UInt24 : IReadable, IWritable {
+    public sealed class UInt24 : IReadable, IWriteable {
 
         /// <summary>
         /// Max value.

@@ -84,7 +84,7 @@ namespace GotaSequenceLib.Playback {
         public int GetVolume() {
             int lfo = LFOType == LFOType.Volume ? (LFORange * Utils.Sin(LFOPhase >> 8) * LFODepth) : 0;
             lfo = (int)(((lfo & ~0xFC000000) >> 8) | ((lfo < 0 ? -1 : 0) << 6) | (((uint)lfo >> 26) << 18));
-            return Utils.SustainTable[_player.Volume] + Utils.SustainTable[Volume] + Utils.SustainTable[Expression] + lfo;
+            return Utils.SustainTable[Math.Min((byte)127, _player.Volume)] + Utils.SustainTable[Math.Min((byte)127, Volume)] + Utils.SustainTable[Expression] + lfo;
         }
 
         /// <summary>
@@ -159,10 +159,7 @@ namespace GotaSequenceLib.Playback {
                     }
                 }
                 // LFO:
-                if (LFODelayCount > 0) {
-                    LFODelayCount--;
-                    LFOPhase = 0;
-                } else {
+                if (LFODelayCount > LFODelay) {
                     int speed = LFOSpeed << 6; // "<< 6" is "* 0x40"
                     int counter = (LFOPhase + speed) >> 8; // ">> 8" is "/ 0x100"
                     while (counter >= 0x80) {
@@ -171,6 +168,9 @@ namespace GotaSequenceLib.Playback {
                     LFOPhase += (ushort)speed;
                     LFOPhase &= 0xFF;
                     LFOPhase |= (ushort)(counter << 8); // "<< 8" is "* 0x100"
+                    
+                } else {
+                    LFODelayCount++;
                 }
             } else {
                 WaitingForNoteToFinishBeforeContinuingXD = false;

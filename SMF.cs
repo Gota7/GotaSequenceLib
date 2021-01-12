@@ -24,8 +24,9 @@ namespace GotaSequenceLib {
         /// </summary>
         /// <param name="commands">Commands.</param>
         /// <param name="startIndex">The start index.</param>
+        /// <param name="trackMask">Allowed tracks.</param>
         /// <returns>The sequence.</returns>
-        public static Sequence FromSequenceCommands(List<SequenceCommand> commands, int startIndex) {
+        public static Sequence FromSequenceCommands(List<SequenceCommand> commands, int startIndex, ushort trackMask = 0xFFFF) {
 
             //New sequence with default 960 ticks per quarter note.
             var m = new Sequence(960) { Format = 1 };
@@ -34,14 +35,14 @@ namespace GotaSequenceLib {
             m.Add(new Track());
             Dictionary<int, int> tickMap = new Dictionary<int, int>();
             short[] vars = new short[] { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
-            WriteTrack(m, tickMap, commands, 0, m[0], m[0], startIndex, ref vars);
+            WriteTrack(m, tickMap, commands, 0, m[0], m[0], startIndex, ref vars, 0, trackMask);
 
             //Get jump commands.
             int labelNum = 0;
             List<long> jumpsAdded = new List<long>();
             List<Tuple<int, int>> jumpsToAdd = new List<Tuple<int, int>>();
 
-            // We aren't guaranteed to hit every instruction in the file, so we loop through tickMap, which contains the instructions that we did hit.
+            //We aren't guaranteed to hit every instruction in the file, so we loop through tickMap, which contains the instructions that we did hit.
             foreach (var cmdTicks in tickMap.Where(x => Player.GetTrueCommandType(commands[x.Key]) == SequenceCommands.Jump)) {
                 int ticksJump = cmdTicks.Value;
                 var cmd = commands[cmdTicks.Key];
@@ -67,7 +68,7 @@ namespace GotaSequenceLib {
         }
 
         /// <summary>
-        /// Write a track. TODO: VARIABLE EMULATION!!!
+        /// Write a track.
         /// </summary>
         /// <param name="m">Sequence.</param>
         /// <param name="commands">Sequence commands.</param>
@@ -78,8 +79,9 @@ namespace GotaSequenceLib {
         /// <param name="startIndex">Start index.</param>
         /// <param name="startTicks">Starting number of ticks.</param>
         /// <param name="vars">Variables.</param>
+        /// <param name="trackMask">Allowed tracks.</param>
         /// <returns>The track.</returns>
-        public static void WriteTrack(Sequence m, Dictionary<int, int> tickMap, List<SequenceCommand> commands, int trackNum, Track t, Track metaTrack, int startIndex, ref short[] vars, int startTicks = 0) {
+        public static void WriteTrack(Sequence m, Dictionary<int, int> tickMap, List<SequenceCommand> commands, int trackNum, Track t, Track metaTrack, int startIndex, ref short[] vars, int startTicks = 0, ushort trackMask = 0xFFFF) {
 
             //Current command.
             int currCommand = startIndex;
@@ -93,9 +95,29 @@ namespace GotaSequenceLib {
             int callStackDepth = 0;
             bool tie = false;
             int lastNote = -1;
-            bool varFlag;
+            bool varFlag = false;
             short[] trackVars = new short[] { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
             int timeBase = 48;
+            int trackIndex = trackNum;
+
+            //Get var.
+            var Vars = vars;
+            short GetVar(int varNum, int h) {
+                if (varNum < 0x20) {
+                    return Vars[varNum];
+                } else {
+                    return trackVars[varNum - 0x20];
+                }
+            }
+
+            //Set var.
+            void SetVar(int varNum, int h, short val) {
+                if (varNum < 0x20) {
+                    Vars[varNum] = val;
+                } else {
+                    trackVars[varNum - 0x20] = val;
+                }
+            }
 
             //Loop forever.
             while (currCommand < commands.Count) {
@@ -116,8 +138,32 @@ namespace GotaSequenceLib {
                 //Get true command type.
                 SequenceCommands trueCommandType = Player.GetTrueCommandType(c);
 
+                //No 0 track.
+                if ((trackMask & 0b1) == 0) {
+                    if (trueCommandType == SequenceCommands.OpenTrack) {
+                        if (((0b1 << args[0]) & trackMask) > 0) {
+                            while (m.Count - 1 < args[0]) {
+                                m.Add(new Track());
+                            }
+                            WriteTrack(m, tickMap, commands, args[0], m[args[0]], metaTrack, args[1], ref vars, ticks);
+                        }
+                    }
+                    currCommand++;
+                    continue;
+                }
+
+                //If command.
+                if (c.CommandType == SequenceCommands.If && !varFlag) {
+                    currCommand++;
+                    continue;
+                }
+
                 //Switch type.
                 switch (trueCommandType) {
+
+                    //Allocate trace.
+                    case SequenceCommands.AllocateTrack:
+                        break;
 
                     //Note.
                     case SequenceCommands.Note:
@@ -139,13 +185,17 @@ namespace GotaSequenceLib {
 
                     //Open track.
                     case SequenceCommands.OpenTrack:
-                        while (m.Count - 1 < args[0]) {
-                            m.Add(new Track());
+                        if (((0b1 << args[0]) & trackMask) > 0) {
+                            while (m.Count - 1 < args[0]) {
+                                m.Add(new Track());
+                            }
+                            WriteTrack(m, tickMap, commands, args[0], m[args[0]], metaTrack, args[1], ref vars, ticks);
                         }
-                        WriteTrack(m, tickMap, commands, args[0], m[args[0]], metaTrack, args[1], ref vars, ticks);
                         break;
 
                     //Jump. Is implemented after.
+                    case SequenceCommands.Jump:
+                        break;
 
                     //Call.
                     case SequenceCommands.Call:
@@ -396,7 +446,122 @@ namespace GotaSequenceLib {
                             case 35:
                                 t.Insert(ticks, new ChannelMessage(ChannelCommand.Controller, trackNum, 83, args[1]));
                                 break;
+                            default:
+                                metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                                break;
                         }
+                        break;
+
+                    //Add var.
+                    case SequenceCommands.AddVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) + args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Sub var.
+                    case SequenceCommands.SubVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) - args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Mul var.
+                    case SequenceCommands.MulVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) * args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Div var.
+                    case SequenceCommands.DivVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) / args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Shift var.
+                    case SequenceCommands.ShiftVar:
+                        SetVar(args[0], trackIndex, args[1] < 0 ? (short)(GetVar(args[0], trackIndex) >> -args[1]) : (short)(GetVar(args[0], trackIndex) << args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Rand var.
+                    case SequenceCommands.RandVar: {
+                        bool negate = false;
+                        if (args[1] < 0) {
+                            negate = true;
+                            args[1] = (short)-args[1];
+                        }
+                        short val = (short)_rand.Next(args[1] + 1);
+                        if (negate) {
+                            val = (short)-val;
+                        }
+                        SetVar(args[0], trackIndex, val);
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+                    }
+
+                    //And var.
+                    case SequenceCommands.AndVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) & args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Or var.
+                    case SequenceCommands.OrVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) | (short)args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Xor var.
+                    case SequenceCommands.XorVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) ^ args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Not var.
+                    case SequenceCommands.NotVar:
+                        SetVar(args[0], trackIndex, (short)((~(GetVar(args[0], trackIndex) & args[1])) | (GetVar(args[0], trackIndex) & (~args[0]))));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Mod var.
+                    case SequenceCommands.ModVar:
+                        SetVar(args[0], trackIndex, (short)(GetVar(args[0], trackIndex) % args[1]));
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Compare equal.
+                    case SequenceCommands.CmpEq:
+                        varFlag = GetVar(args[0], trackIndex) == args[1];
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Compare greater than or equal.
+                    case SequenceCommands.CmpGe:
+                        varFlag = GetVar(args[0], trackIndex) >= args[1];
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Compare greater than.
+                    case SequenceCommands.CmpGt:
+                        varFlag = GetVar(args[0], trackIndex) > args[1];
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Compare less than or equal.
+                    case SequenceCommands.CmpLe:
+                        varFlag = GetVar(args[0], trackIndex) <= args[1];
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Compare less than.
+                    case SequenceCommands.CmpLt:
+                        varFlag = GetVar(args[0], trackIndex) < args[1];
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
+                        break;
+
+                    //Compare not equal.
+                    case SequenceCommands.CmpNe:
+                        varFlag = GetVar(args[0], trackIndex) != args[1];
+                        metaTrack.Insert(ticks, new MetaMessage(MetaType.Marker, Encoding.UTF8.GetBytes(trackNum + ": " + c.ToString())));
                         break;
 
                     //Not implemented.

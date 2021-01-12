@@ -39,16 +39,28 @@ namespace GotaSequenceLib.Playback {
         /// </summary>
         public byte Volume = 127;
 
+        /// <summary>
+        /// How many ticks per quarter note.
+        /// </summary>
+        private int Timebase {
+            get => _ticksPerWholeNote / 4;
+            set {
+                _ticksPerWholeNote = value * 4;
+                _time = new TimeBarrier(_ticksPerWholeNote);
+            }
+        }
+
         //Private variables.
         private readonly Track[] _tracks = new Track[0x10];
         private readonly Mixer _mixer;
-        private readonly TimeBarrier _time;
+        private TimeBarrier _time;
         private Thread _thread;
         private int _randSeed;
         private Random _rand;
         private ushort _tempo;
         private int _tempoStack;
         private long _elapsedLoops;
+        private int _ticksPerWholeNote = 192;
         private int currEventOverride;
 
         public List<SequenceCommand> Events { get; private set; }
@@ -86,7 +98,7 @@ namespace GotaSequenceLib.Playback {
                 _tracks[i] = new Track(i, this);
             }
             _mixer = mixer;
-            _time = new TimeBarrier(192);
+            Timebase = 48;
 
         }
 
@@ -142,6 +154,7 @@ namespace GotaSequenceLib.Playback {
             _tempoStack = 0;
             _elapsedLoops = 0;
             ElapsedTicks = 0;
+            Timebase = 48;
             _mixer.ResetFade();
             _rand = new Random(_randSeed);
             for (int i = 0; i < 0x10; i++) {
@@ -149,7 +162,7 @@ namespace GotaSequenceLib.Playback {
             }
 
             //Initialize player and global variables. Global variables should not have an effect in this program.
-            for (int i = 0; i < 0x20; i++) {
+            for (int i = 0; i < 0x10; i++) {
                 Vars[i] = -1;
             }
 
@@ -893,7 +906,6 @@ namespace GotaSequenceLib.Playback {
                         val = (short)-val;
                     }
                     SetVar(args[0], trackIndex, val);
-
                     break;
                 }
 
@@ -956,8 +968,14 @@ namespace GotaSequenceLib.Playback {
                 case SequenceCommands.UserCall:
                     break;
 
-                //Not implemented.
+                //Time base.
                 case SequenceCommands.Timebase:
+                    _time.Stop();
+                    Timebase = args[0];
+                    _time.Start();
+                    break;
+
+                //Not implemented.
                 case SequenceCommands.Monophonic:
                 case SequenceCommands.VelocityRange:
                 case SequenceCommands.BiquadType:

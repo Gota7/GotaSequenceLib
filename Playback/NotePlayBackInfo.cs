@@ -42,9 +42,9 @@ namespace GotaSequenceLib.Playback {
         public byte Sustain = 127;
 
         /// <summary>
-        /// Hold.
+        /// Hold. TODO!!!
         /// </summary>
-        public byte Hold = 127;
+        public byte Hold = 0;
 
         /// <summary>
         /// Release.
@@ -60,6 +60,36 @@ namespace GotaSequenceLib.Playback {
         /// Pan.
         /// </summary>
         public byte Pan = 64;
+
+        /// <summary>
+        /// Surround pan. TODO!!!
+        /// </summary>
+        public sbyte SurroundPan;
+
+        /// <summary>
+        /// Volume. TODO!!!
+        /// </summary>
+        public byte Volume = 127;
+
+        /// <summary>
+        /// Key group. TODO!!!
+        /// </summary>
+        public byte KeyGroup = 0;
+
+        /// <summary>
+        /// Tune. TODO!!!
+        /// </summary>
+        public float Tune = 1f;
+
+        /// <summary>
+        /// Percussion mode. TODO!!!
+        /// </summary>
+        public bool PercussionMode = false;
+
+        /// <summary>
+        /// Linear interpolation. TODO!!!
+        /// </summary>
+        public bool IsLinearInterpolation = false;
 
     }
 

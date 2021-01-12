@@ -25,6 +25,11 @@ namespace GotaSequenceLib {
         public Dictionary<string, uint> Labels = new Dictionary<string, uint>();
 
         /// <summary>
+        /// Command indices.
+        /// </summary>
+        private Dictionary<uint, int> CommandIndices;
+
+        /// <summary>
         /// Song name.
         /// </summary>
         public string Name;
@@ -183,6 +188,9 @@ namespace GotaSequenceLib {
                         }
                     }
 
+                    //Set offset.
+                    CommandIndices = offsetMap;
+
                 }
 
             }
@@ -245,6 +253,9 @@ namespace GotaSequenceLib {
 
                     //Set data.
                     RawData = o.ToArray();
+
+                    //Set map.
+                    CommandIndices = indexMap.ToDictionary(x => x.Value, x => x.Key);
 
                 }
 
@@ -503,6 +514,27 @@ namespace GotaSequenceLib {
             WriteCommandData();
 
         }
+        
+        /// <summary>
+        /// Convert a data offset to an index.
+        /// </summary>
+        /// <param name="offset">Data offset.</param>
+        /// <returns>Index.</returns>
+        public int ConvertOffset(uint offset) {
+
+            //Get lowest distance.
+            int lowest = -1;
+            long minDist = long.MaxValue;
+            for (int i = 0; i < CommandIndices.Count; i++) {
+                long dist = Math.Abs(offset - CommandIndices.Keys.ElementAt(i));
+                if (dist < minDist) {
+                    minDist = dist;
+                    lowest = i;
+                }
+            }
+            return CommandIndices.Values.ElementAt(lowest);
+
+        }
 
         /// <summary>
         /// Create a sequence from an MIDI.
@@ -523,9 +555,10 @@ namespace GotaSequenceLib {
         /// Convert the file to an MIDI.
         /// </summary>
         /// <param name="filePath">Path to save the MIDI.</param>
-        public void SaveMIDI(string filePath) {
+        /// <param name="trackMask">Track mask.</param>
+        public void SaveMIDI(string filePath, ushort trackMask = 0xFFFF) {
             ReadCommandData();
-            Sanford.Multimedia.Midi.Sequence s = SMF.FromSequenceCommands(Commands, 0);
+            Sanford.Multimedia.Midi.Sequence s = SMF.FromSequenceCommands(Commands, 0, trackMask);
             s.Save(filePath);
         }
 

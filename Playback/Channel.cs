@@ -223,7 +223,7 @@ namespace GotaSequenceLib.Playback {
                 _pos = (_pos + 0x100) % Timer;
                 for (int i = 0; i < numSamples; i++) {
                     if (Type == InstrumentType.PCM && !_wave.Loops) {
-                        if (_waveSample >= _wave.Channels[0].NumSamples) {
+                        if (_waveSample >= _wave.Audio.NumSamples) {
                             Stop();
                         } else {
                             _waveSample++;
@@ -251,7 +251,7 @@ namespace GotaSequenceLib.Playback {
                         case InstrumentType.PCM: {
                             if (_wave != null) {
                                 samp = 1;
-                                if (_waveSample >= _wave.Channels[0].NumSamples) {
+                                if (_waveSample >= _wave.Audio.NumSamples) {
                                     if (_wave.Loops) {
                                         _waveSample = (int)_wave.LoopStart;
                                     } else {
@@ -260,19 +260,20 @@ namespace GotaSequenceLib.Playback {
                                         return;
                                     }
                                 }
-                                if (_wave.Channels[0] as PCM16 != null) {
-                                    if (_wave.Channels.Count > 1) {
-                                        lSample = (_wave.Channels[0] as PCM16).Samples[_waveSample++];
-                                        rSample = (_wave.Channels[1] as PCM16).Samples[_waveSample++];
+                                _wave.Audio.ChangeBlockSize(-1);
+                                if (_wave.Audio.Channels[0][0] as PCM16 != null) {
+                                    if (_wave.Audio.Channels.Count > 1) {
+                                        lSample = ((short[])(_wave.Audio.Channels[0][0] as PCM16).RawData())[_waveSample];
+                                        rSample = ((short[])(_wave.Audio.Channels[1][0] as PCM16).RawData())[_waveSample++];
                                     } else {
-                                        samp = (_wave.Channels[0] as PCM16).Samples[_waveSample++];
+                                        samp = ((short[])(_wave.Audio.Channels[0][0] as PCM16).RawData())[_waveSample++];
                                     }
-                                } else if (_wave.Channels[0] as PCM8 != null) {
-                                    if (_wave.Channels.Count > 1) {
-                                        lSample = (_wave.Channels[0] as PCM8).Samples[_waveSample++];
-                                        rSample = (_wave.Channels[1] as PCM8).Samples[_waveSample++];
+                                } else if (_wave.Audio.Channels[0][0] as PCM8 != null) {
+                                    if (_wave.Audio.Channels.Count > 1) {
+                                        lSample = (short)((((byte[])(_wave.Audio.Channels[0][0] as PCM8).RawData())[_waveSample] - 128) << 8);
+                                        rSample = (short)((((byte[])(_wave.Audio.Channels[1][0] as PCM8).RawData())[_waveSample++] - 128) << 8);
                                     } else {
-                                        samp = (_wave.Channels[0] as PCM8).Samples[_waveSample++];
+                                        samp = (short)((((byte[])(_wave.Audio.Channels[0][0] as PCM8).RawData())[_waveSample++] - 128) << 8);
                                     }
                                 } else {
                                     samp = 0;
